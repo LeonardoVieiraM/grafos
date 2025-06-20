@@ -11,7 +11,7 @@ class Grafo:
             representacao: 'matriz' para matriz de adjacência ou 'lista' para lista de adjacência
         """
         self.representacao = representacao
-        self.vertices = set()  # Usando set para evitar vértices duplicados
+        self.vertices = set()
         self.arestas = []
         self.pesos_vertices = {}
         self.rotulos_vertices = {}
@@ -19,7 +19,7 @@ class Grafo:
         self.rotulos_arestas = {}
         
         if representacao == 'matriz':
-            self.estrutura = []  # Será inicializada quando adicionarmos vértices
+            self.estrutura = []
             self._matriz_atualizada = False
         else:
             self.estrutura = {}  # Dicionário para lista de adjacência

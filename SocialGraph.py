@@ -197,7 +197,7 @@ class SocialGraph:
             users.add(source)
             users.update(targets.keys())
         
-        self.grafo = Grafo(len(users), representacao='lista')
+        self.grafo = Grafo(representacao='lista')
         
         # Mapeia usuários para índices (opcional, dependendo da sua implementação)
         user_index = {user: idx for idx, user in enumerate(users)}
@@ -217,7 +217,7 @@ class SocialGraph:
         print(f"Total de usuários: {self.grafo.quantidade_vertices()}")
         print(f"Total de interações: {self.grafo.quantidade_arestas()}")
     
-    def export_to_csv(self, filename: str = 'social_graph.csv'):
+    def export_to_csv(self, filename: str = 'SocialGraph.csv'):
         """Exporta o grafo social para CSV"""
         if self.grafo is None:
             raise Exception("Grafo não construído. Execute build_graph() primeiro.")
@@ -234,7 +234,15 @@ class SocialGraph:
 
 # Exemplo de uso
 if __name__ == "__main__":
-    social_graph = SocialGraph()
-    social_graph.build_graph()
-    social_graph.export_to_csv()
-    social_graph.plot_graph()
+    load_dotenv()
+    if not os.getenv('GITHUB_KEY'):
+        print("Erro: GITHUB_KEY não encontrada no arquivo .env")
+        exit(1)
+    if not os.getenv('REPOSITORIO'):
+        print("Erro: REPOSITORIO não encontrado no arquivo .env")
+        exit(1)
+    
+    SocialGraph = SocialGraph()
+    SocialGraph.build_graph()
+    SocialGraph.export_to_csv()
+    SocialGraph.plot_graph()
