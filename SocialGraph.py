@@ -5,6 +5,7 @@ import json
 import time
 from typing import Dict, List, Optional
 from grafo import Grafo
+import networkx as nx
 
 load_dotenv()
 
@@ -186,71 +187,97 @@ class SocialGraph:
         except KeyError as e:
             raise Exception(f"Missing expected data field: {str(e)}")
     
-    def build_graph(self):
-        """Constrói o grafo social a partir das interações no repositório"""
-        print("Iniciando construção do grafo social...")
+    def build_graph(self, min_interactions: int = 20):
+          """Constrói o grafo social com filtro opcional por atividade mínima"""
+          print("Iniciando construção do grafo social...")
+          
+          all_interactions = {}
+          cursor = None
+          has_next_page = True
+          request_count = 0
+          
+          while has_next_page and request_count < 30:
+              request_count += 1
+              print(f"Realizando requisição {request_count}...")
+              
+              try:
+                  data = self._get_issues_and_prs(cursor)
+                  batch_interactions = self._process_interactions(data)
+                  
+                  for user, interactions in batch_interactions.items():
+                      if user not in all_interactions:
+                          all_interactions[user] = {}
+                      for target, weight in interactions.items():
+                          all_interactions[user][target] = all_interactions[user].get(target, 0) + weight
+                  
+                  issues_page_info = data['data']['repository']['issues']['pageInfo']
+                  has_next_page = issues_page_info['hasNextPage']
+                  cursor = issues_page_info['endCursor']
+                  
+                  time.sleep(1.5)
+                  
+              except Exception as e:
+                  print(f"Erro durante a coleta de dados: {str(e)}")
+                  break
+          
+          # Create graph
+          self.grafo = Grafo(representacao='lista')
+          
+          # Collect all users and filter by activity
+          all_users = set()
+          user_activity = {}
+          
+          for source, targets in all_interactions.items():
+              total = sum(targets.values())
+              user_activity[source] = total
+              all_users.add(source)
+              all_users.update(targets.keys())
+          
+          # Filter users by minimum interactions
+          if min_interactions > 0:
+              active_users = {u for u in all_users if user_activity.get(u, 0) >= min_interactions}
+              print(f"Filtrando {len(active_users)} usuários ativos (≥ {min_interactions} interações)")
+          else:
+              active_users = all_users
+          
+          # Add vertices (filtered users)
+          for user in active_users:
+              total_interactions = sum(all_interactions.get(user, {}).values()) + \
+                                  sum(v.get(user, 0) for v in all_interactions.values())
+              self.grafo.adicionar_vertice(user, peso=total_interactions, rotulo=user)
+          
+          # Add edges (filtered interactions)
+          for source, targets in all_interactions.items():
+              if source not in active_users:
+                  continue
+              for target, weight in targets.items():
+                  if target in active_users:
+                      self.grafo.adicionar_aresta(source, target, peso=weight)
+          
+          print("\nGrafo social construído com sucesso!")
+          print(f"Total de usuários: {self.grafo.quantidade_vertices()}")
+          print(f"Total de interações: {self.grafo.quantidade_arestas()}\n")
+    
+    def export_to_gephi(self, filename: str = 'social_graph.gexf'):
+        """Exporta o grafo para formato Gephi (GEXF)"""
+        if self.grafo is None:
+            raise Exception("Grafo não construído. Execute build_graph() primeiro.")
         
-        all_interactions = {}
-        cursor = None
-        has_next_page = True
-        request_count = 0
+        G = nx.DiGraph()
         
-        while has_next_page and request_count < 10:
-            request_count += 1
-            print(f"Realizando requisição {request_count}...")
-            
-            try:
-                data = self._get_issues_and_prs(cursor)
-                batch_interactions = self._process_interactions(data)
-                
-                # Merge batch results
-                for user, targets in batch_interactions.items():
-                    if user not in all_interactions:
-                        all_interactions[user] = {}
-                    for target, weight in targets.items():
-                        all_interactions[user][target] = all_interactions[user].get(target, 0) + weight
-                
-                # Update pagination info
-                issues_page_info = data['data']['repository']['issues']['pageInfo']
-                has_next_page = issues_page_info['hasNextPage']
-                cursor = issues_page_info['endCursor']
-                
-                time.sleep(1)
-                
-            except Exception as e:
-                print(f"Erro durante a coleta de dados: {str(e)}")
-                break
+        # Add nodes with attributes
+        for v in self.grafo.vertices:
+            G.add_node(v, 
+                      weight=self.grafo.pesos_vertices.get(v, 1),
+                      label=self.grafo.rotulos_vertices.get(v, v))
         
-        # Create graph
-        self.grafo = Grafo(representacao='lista')
+        # Add edges with weights
+        for (u, v), weight in self.grafo.pesos_arestas.items():
+            G.add_edge(u, v, weight=weight)
         
-        # Collect all users
-        all_users = set(all_interactions.keys())
-        for targets in all_interactions.values():
-            all_users.update(targets.keys())
-        
-        if not all_users:
-            print("Nenhum dado de usuário encontrado. Verifique se o repositório tem issues/PRs.")
-            return
-        
-        # Add vertices
-        for user in all_users:
-            # Calculate total activity (outgoing + incoming)
-            out_degree = sum(all_interactions.get(user, {}).values())
-            in_degree = sum(interactions.get(user, 0) 
-                          for interactions in all_interactions.values())
-            total_activity = out_degree + in_degree
-            
-            self.grafo.adicionar_vertice(user, peso=total_activity, rotulo=user)
-        
-        # Add edges
-        for source, targets in all_interactions.items():
-            for target, weight in targets.items():
-                self.grafo.adicionar_aresta(source, target, peso=weight)
-        
-        print("\nGrafo social construído com sucesso!")
-        print(f"Total de usuários: {self.grafo.quantidade_vertices()}")
-        print(f"Total de interações: {self.grafo.quantidade_arestas()}\n")
+        # Write GEXF file
+        nx.write_gexf(G, filename)
+        print(f"Grafo exportado para Gephi: {filename}")
     
     def export_to_csv(self, filename: str = 'social_graph.csv'):
         """Exporta o grafo social para CSV"""
