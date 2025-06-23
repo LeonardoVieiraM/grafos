@@ -22,6 +22,7 @@ class Grafo:
         if representacao == 'matriz':
             self.estrutura = []
             self._matriz_atualizada = False
+            self._vertex_index = {}  # Mapeamento de vértices para índices
         else:
             self.estrutura = {}  # Dicionário para lista de adjacência
     
@@ -39,9 +40,9 @@ class Grafo:
             
             if self.representacao == 'lista':
                 self.estrutura[v] = []
+            else:
+                self._matriz_atualizada = False
             
-            self._matriz_atualizada = False
-        
         if peso != 1:
             self.pesos_vertices[v] = peso
         if rotulo:
@@ -84,12 +85,12 @@ class Grafo:
         self.estrutura = [[0] * num_vertices for _ in range(num_vertices)]
         
         # Mapeia vértices para índices
-        vertex_index = {v: i for i, v in enumerate(sorted(self.vertices))}
+        self._vertex_index = {v: i for i, v in enumerate(sorted(self.vertices))}
         
         # Preenche a matriz com os pesos das arestas
         for u, v in self.arestas:
-            i = vertex_index[u]
-            j = vertex_index[v]
+            i = self._vertex_index[u]
+            j = self._vertex_index[v]
             self.estrutura[i][j] = self.pesos_arestas.get((u, v), 1)
         
         self._matriz_atualizada = True
@@ -179,9 +180,10 @@ class Grafo:
         if self.representacao == 'matriz':
             if not self._matriz_atualizada:
                 self._atualizar_matriz()
-            vertex_index = {v: i for i, v in enumerate(sorted(self.vertices))}
-            i = vertex_index[u]
-            j = vertex_index[v]
+            if u not in self._vertex_index or v not in self._vertex_index:
+                return False
+            i = self._vertex_index[u]
+            j = self._vertex_index[v]
             return self.estrutura[i][j] != 0
         else:
             return any(vertice == v for vertice, _ in self.estrutura.get(u, []))
@@ -361,3 +363,46 @@ class Grafo:
             positions[v] = (x, y)
         
         return positions
+
+    def obter_vizinhos(self, v: str) -> List[str]:
+        """
+        Retorna a lista de vizinhos de um vértice
+        
+        Args:
+            v: Vértice para obter vizinhos
+            
+        Returns:
+            Lista de vértices vizinhos
+        """
+        if v not in self.vertices:
+            raise ValueError("Vértice não existe")
+            
+        if self.representacao == 'matriz':
+            if not self._matriz_atualizada:
+                self._atualizar_matriz()
+            if v not in self._vertex_index:
+                return []
+            
+            vizinhos = []
+            index = self._vertex_index[v]
+            for vertice, i in self._vertex_index.items():
+                if self.estrutura[index][i] != 0:
+                    vizinhos.append(vertice)
+            return vizinhos
+        else:
+            return [vizinho for vizinho, _ in self.estrutura.get(v, [])]
+
+    def grau_vertice(self, v: str) -> int:
+        """
+        Retorna o grau de um vértice (número de arestas conectadas)
+        
+        Args:
+            v: Vértice para calcular o grau
+            
+        Returns:
+            Número de arestas conectadas ao vértice
+        """
+        if self.representacao == 'matriz':
+            return len(self.obter_vizinhos(v))
+        else:
+            return len(self.estrutura.get(v, []))
