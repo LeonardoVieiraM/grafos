@@ -1,6 +1,7 @@
 import csv
 import matplotlib.pyplot as plt
 from typing import Dict, List, Optional, Tuple, Union
+import math
 
 class Grafo:
     def __init__(self, representacao: str = 'lista'):
@@ -347,9 +348,6 @@ class Grafo:
     def _calcular_posicoes(self) -> Dict[str, Tuple[float, float]]:
         """
         Calcula posições para os vértices em um layout circular
-        
-        Returns:
-            Dicionário mapeando vértices para posições (x, y)
         """
         num_vertices = len(self.vertices)
         radius = 1.0
@@ -357,9 +355,9 @@ class Grafo:
         
         positions = {}
         for i, v in enumerate(sorted(self.vertices)):
-            angle = 2 * 3.141592653589793 * i / num_vertices
-            x = center[0] + radius * 1.5 * (1 + 0.1 * (i % 3)) * 3.141592653589793.cos(angle)
-            y = center[1] + radius * 1.5 * (1 + 0.1 * (i % 3)) * 3.141592653589793.sin(angle)
+            angle = 2 * math.pi * i / num_vertices
+            x = center[0] + radius * 1.5 * (1 + 0.1 * (i % 3)) * math.cos(angle)
+            y = center[1] + radius * 1.5 * (1 + 0.1 * (i % 3)) * math.sin(angle)
             positions[v] = (x, y)
         
         return positions

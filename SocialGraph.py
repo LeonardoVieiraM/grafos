@@ -4,14 +4,16 @@ import requests
 import json
 import time
 from typing import Dict, List, Optional
-from grafo import Grafo  # Importando nossa biblioteca de grafos
+from grafo import Grafo
 
-load_dotenv()  # Carrega variáveis do .env
+load_dotenv()
 
 class SocialGraph:
     def __init__(self):
         self.github_key = os.getenv('GITHUB_KEY')
         self.repositorio = os.getenv('REPOSITORIO')
+        if not self.github_key or not self.repositorio:
+            raise ValueError("Missing GitHub credentials in .env file")
         self.owner, self.repo = self._parse_repo_url()
         self.graphql_url = 'https://api.github.com/graphql'
         self.headers = {
@@ -31,16 +33,27 @@ class SocialGraph:
         if variables:
             payload['variables'] = variables
         
-        response = requests.post(
-            self.graphql_url,
-            headers=self.headers,
-            data=json.dumps(payload)
-        )
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            raise Exception(f"Query failed: {response.status_code} - {response.text}")
+        try:
+            response = requests.post(
+                self.graphql_url,
+                headers=self.headers,
+                data=json.dumps(payload),
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if 'errors' in data:
+                error_msg = "\n".join([e['message'] for e in data['errors']])
+                raise Exception(f"GraphQL errors: {error_msg}")
+            
+            if 'data' not in data:
+                raise Exception("No 'data' field in response")
+                
+            return data
+            
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Request failed: {str(e)}")
     
     def _get_issues_and_prs(self, cursor: Optional[str] = None) -> Dict:
         """Obtém issues e PRs com paginação"""
@@ -53,7 +66,6 @@ class SocialGraph:
                 endCursor
               }
               nodes {
-                id
                 author {
                   login
                 }
@@ -72,7 +84,6 @@ class SocialGraph:
                 endCursor
               }
               nodes {
-                id
                 author {
                   login
                 }
@@ -87,6 +98,13 @@ class SocialGraph:
                   nodes {
                     author {
                       login
+                    }
+                    comments(first: 50) {
+                      nodes {
+                        author {
+                          login
+                        }
+                      }
                     }
                   }
                 }
@@ -105,63 +123,79 @@ class SocialGraph:
     def _process_interactions(self, data: Dict) -> Dict[str, Dict[str, int]]:
         """
         Processa os dados da API e retorna um dicionário de interações
-        Formato: {'usuario1': {'usuario2': peso, 'usuario3': peso}, ...}
         """
         interactions = {}
         
-        def add_interaction(source, target):
-            if source is None or target is None:
+        def add_interaction(source, target, weight=1):
+            if not source or not target or not source.get('login') or not target.get('login'):
                 return
             
-            if source['login'] == target['login']:
-                return  # Ignora auto-interações
+            source_login = source['login']
+            target_login = target['login']
             
-            if source['login'] not in interactions:
-                interactions[source['login']] = {}
+            if source_login == target_login:
+                return
             
-            if target['login'] not in interactions[source['login']]:
-                interactions[source['login']][target['login']] = 0
+            if source_login not in interactions:
+                interactions[source_login] = {}
             
-            interactions[source['login']][target['login']] += 1
+            interactions[source_login][target_login] = interactions[source_login].get(target_login, 0) + weight
         
-        # Processa issues
-        for issue in data['data']['repository']['issues']['nodes']:
-            author = issue['author']
-            for comment in issue['comments']['nodes']:
-                comment_author = comment['author']
-                add_interaction(author, comment_author)
-                add_interaction(comment_author, author)  # Interação bidirecional
-        
-        # Processa PRs
-        for pr in data['data']['repository']['pullRequests']['nodes']:
-            author = pr['author']
+        try:
+            repo_data = data['data']['repository']
             
-            # Comentários no PR
-            for comment in pr['comments']['nodes']:
-                comment_author = comment['author']
-                add_interaction(author, comment_author)
-                add_interaction(comment_author, author)
+            # Process issues
+            for issue in repo_data['issues']['nodes']:
+                author = issue.get('author')
+                if not author:
+                    continue
+                
+                for comment in issue['comments']['nodes']:
+                    comment_author = comment.get('author')
+                    add_interaction(author, comment_author)
+                    add_interaction(comment_author, author)
             
-            # Reviews no PR
-            for review in pr['reviews']['nodes']:
-                review_author = review['author']
-                add_interaction(author, review_author)
-                add_interaction(review_author, author)
-        
-        return interactions
+            # Process PRs
+            for pr in repo_data['pullRequests']['nodes']:
+                author = pr.get('author')
+                if not author:
+                    continue
+                
+                # PR comments
+                for comment in pr['comments']['nodes']:
+                    comment_author = comment.get('author')
+                    add_interaction(author, comment_author)
+                    add_interaction(comment_author, author)
+                
+                # PR reviews and review comments
+                for review in pr['reviews']['nodes']:
+                    review_author = review.get('author')
+                    if not review_author:
+                        continue
+                    
+                    add_interaction(author, review_author, 2)
+                    add_interaction(review_author, author, 2)
+                    
+                    for review_comment in review['comments']['nodes']:
+                        review_comment_author = review_comment.get('author')
+                        add_interaction(author, review_comment_author)
+                        add_interaction(review_comment_author, author)
+            
+            return interactions
+            
+        except KeyError as e:
+            raise Exception(f"Missing expected data field: {str(e)}")
     
     def build_graph(self):
         """Constrói o grafo social a partir das interações no repositório"""
         print("Iniciando construção do grafo social...")
         
-        # Inicializa estruturas para coleta de dados
         all_interactions = {}
         cursor = None
         has_next_page = True
         request_count = 0
         
-        # Loop de paginação
-        while has_next_page and request_count < 10:  # Limite para evitar rate limit
+        while has_next_page and request_count < 10:
             request_count += 1
             print(f"Realizando requisição {request_count}...")
             
@@ -169,55 +203,56 @@ class SocialGraph:
                 data = self._get_issues_and_prs(cursor)
                 batch_interactions = self._process_interactions(data)
                 
-                # Merge dos resultados
-                for user, interactions in batch_interactions.items():
+                # Merge batch results
+                for user, targets in batch_interactions.items():
                     if user not in all_interactions:
                         all_interactions[user] = {}
-                    
-                    for target, weight in interactions.items():
-                        if target not in all_interactions[user]:
-                            all_interactions[user][target] = 0
-                        all_interactions[user][target] += weight
+                    for target, weight in targets.items():
+                        all_interactions[user][target] = all_interactions[user].get(target, 0) + weight
                 
-                # Verifica paginação para issues (assumindo mesma paginação para PRs)
+                # Update pagination info
                 issues_page_info = data['data']['repository']['issues']['pageInfo']
                 has_next_page = issues_page_info['hasNextPage']
                 cursor = issues_page_info['endCursor']
                 
-                # Espera para evitar rate limit
                 time.sleep(1)
                 
             except Exception as e:
                 print(f"Erro durante a coleta de dados: {str(e)}")
                 break
         
-        # Cria o grafo
-        users = set()
-        for source, targets in all_interactions.items():
-            users.add(source)
-            users.update(targets.keys())
-        
+        # Create graph
         self.grafo = Grafo(representacao='lista')
         
-        # Mapeia usuários para índices (opcional, dependendo da sua implementação)
-        user_index = {user: idx for idx, user in enumerate(users)}
+        # Collect all users
+        all_users = set(all_interactions.keys())
+        for targets in all_interactions.values():
+            all_users.update(targets.keys())
         
-        # Adiciona vértices (usuários) com pesos baseados no total de interações
-        for user in users:
-            total_interactions = sum(all_interactions.get(user, {}).values())
-            self.grafo.definir_peso_vertice(user, total_interactions)
-            self.grafo.definir_rotulo_vertice(user, user)
+        if not all_users:
+            print("Nenhum dado de usuário encontrado. Verifique se o repositório tem issues/PRs.")
+            return
         
-        # Adiciona arestas (interações)
+        # Add vertices
+        for user in all_users:
+            # Calculate total activity (outgoing + incoming)
+            out_degree = sum(all_interactions.get(user, {}).values())
+            in_degree = sum(interactions.get(user, 0) 
+                          for interactions in all_interactions.values())
+            total_activity = out_degree + in_degree
+            
+            self.grafo.adicionar_vertice(user, peso=total_activity, rotulo=user)
+        
+        # Add edges
         for source, targets in all_interactions.items():
             for target, weight in targets.items():
                 self.grafo.adicionar_aresta(source, target, peso=weight)
         
-        print("Grafo social construído com sucesso!")
+        print("\nGrafo social construído com sucesso!")
         print(f"Total de usuários: {self.grafo.quantidade_vertices()}")
-        print(f"Total de interações: {self.grafo.quantidade_arestas()}")
+        print(f"Total de interações: {self.grafo.quantidade_arestas()}\n")
     
-    def export_to_csv(self, filename: str = 'SocialGraph.csv'):
+    def export_to_csv(self, filename: str = 'social_graph.csv'):
         """Exporta o grafo social para CSV"""
         if self.grafo is None:
             raise Exception("Grafo não construído. Execute build_graph() primeiro.")
@@ -226,23 +261,31 @@ class SocialGraph:
         print(f"Grafo exportado para {filename}")
     
     def plot_graph(self):
-        """Plota o grafo social (usando nossa implementação, não NetworkX)"""
+        """Plota o grafo social"""
         if self.grafo is None:
             raise Exception("Grafo não construído. Execute build_graph() primeiro.")
         
+        if self.grafo.quantidade_vertices() == 0:
+            print("Grafo vazio - nada para plotar")
+            return
+        
         self.grafo.plotar()
 
-# Exemplo de uso
 if __name__ == "__main__":
-    load_dotenv()
-    if not os.getenv('GITHUB_KEY'):
-        print("Erro: GITHUB_KEY não encontrada no arquivo .env")
-        exit(1)
-    if not os.getenv('REPOSITORIO'):
-        print("Erro: REPOSITORIO não encontrado no arquivo .env")
-        exit(1)
+    try:
+        load_dotenv()
+        social_graph = SocialGraph()
+        social_graph.build_graph()
+        
+        if social_graph.grafo and social_graph.grafo.quantidade_vertices() > 0:
+            social_graph.export_to_csv()
+            social_graph.plot_graph()
+        else:
+            print("Nenhum dado foi coletado. Verifique:")
+            print("1. Se o token GITHUB_KEY no arquivo .env é válido")
+            print("2. Se o repositório possui issues ou pull requests")
+            print("3. Se você tem permissão para acessar este repositório")
     
-    SocialGraph = SocialGraph()
-    SocialGraph.build_graph()
-    SocialGraph.export_to_csv()
-    SocialGraph.plot_graph()
+    except Exception as e:
+        print(f"\nErro durante a execução: {str(e)}")
+        print("Verifique seu arquivo .env e as permissões do token GitHub")
