@@ -406,3 +406,41 @@ class Grafo:
             return len(self.obter_vizinhos(v))
         else:
             return len(self.estrutura.get(v, []))
+        
+        
+    def sao_adjacentes_arestas(self, u1: str, v1: str, u2: str, v2: str) -> bool:
+        """
+        Verifica se duas arestas são adjacentes (compartilham um vértice)
+        """
+        return (u1 == u2 or u1 == v2 or v1 == u2 or v1 == v2)
+
+    def incide(self, vertice: str, aresta_u: str, aresta_v: str) -> bool:
+        """
+        Verifica se uma aresta incide em um vértice
+        """
+        return vertice == aresta_u or vertice == aresta_v
+
+    def e_completo(self) -> bool:
+        """
+        Verifica se o grafo é completo (todos os vértices estão conectados entre si)
+        """
+        n = len(self.vertices)
+        if self.representacao == 'matriz':
+            if not self._matriz_atualizada:
+                self._atualizar_matriz()
+            expected_edges = n * (n - 1)  # para grafo direcionado
+            return len(self.arestas) == expected_edges
+        else:
+            expected_edges = n * (n - 1)  # para grafo direcionado
+            actual_edges = sum(len(vizinhos) for vizinhos in self.estrutura.values())
+            return actual_edges == expected_edges
+
+    @classmethod
+    def criar_grafo_com_vertices(cls, num_vertices: int, representacao: str = 'lista') -> 'Grafo':
+        """
+        Cria um grafo com um número específico de vértices (nomes gerados automaticamente)
+        """
+        grafo = cls(representacao)
+        for i in range(num_vertices):
+            grafo.adicionar_vertice(f"v{i}")
+        return grafo

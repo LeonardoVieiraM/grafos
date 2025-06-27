@@ -3,9 +3,10 @@ from dotenv import load_dotenv
 import requests
 import json
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set, Tuple
 from grafo import Grafo
 import networkx as nx
+import matplotlib.pyplot as plt
 
 load_dotenv()
 
@@ -191,7 +192,7 @@ class SocialGraph:
         except KeyError as e:
             raise Exception(f"Missing expected data field: {str(e)}")
     
-    def build_graph(self, min_interactions: int = 30):
+    def build_graph(self, min_interactions: int = 50):
         """Constrói o grafo social com representação escolhida"""
         print(f"Iniciando construção do grafo social ({self.representation})...")
         
@@ -261,6 +262,96 @@ class SocialGraph:
         print("\nGrafo social construído com sucesso!")
         print(f"Total de usuários: {self.grafo.quantidade_vertices()}")
         print(f"Total de interações: {self.grafo.quantidade_arestas()}\n")
+        
+        
+        
+    def run_analysis_menu(self):
+        """Menu interativo para análise do grafo social"""
+        if self.grafo is None or self.grafo.quantidade_vertices() == 0:
+            print("Grafo não construído ou vazio. Execute build_graph() primeiro.")
+            return
+        
+        while True:
+            print("\n=== MENU DE ANÁLISE DO GRAFO SOCIAL ===")
+            print("1. Mostrar 5 usuários mais influentes")
+            print("2. Identificar e remover quem gera maior fragmentação")
+            print("3. Mostrar grupos naturais existentes")
+            print("4. Calcular nível de conexão da comunidade")
+            print("5. Encontrar usuários mais próximos de um usuário")
+            print("6. Encontrar usuários próximos que não interagem")
+            print("7. Visualizar grafo")
+            print("0. Sair")
+            
+            choice = input("Escolha uma opção (0-7): ")
+            
+            if choice == "1":
+                self.show_most_influential()
+            elif choice == "2":
+                self.handle_fragmentation()
+            elif choice == "3":
+                self.show_natural_groups()
+            elif choice == "4":
+                self.show_connection_level()
+            elif choice == "5":
+                self.show_close_users()
+            elif choice == "6":
+                self.show_close_non_interacting()
+            elif choice == "7":
+                self.plot_graph()
+            elif choice == "0":
+                break
+            else:
+                print("Opção inválida. Tente novamente.")
+    
+    def show_most_influential(self):
+        """Mostra os 5 usuários mais influentes"""
+        top_users = self.usuarios_mais_influentes()
+        print("\nTop 5 usuários mais influentes:")
+        for i, (user, score) in enumerate(top_users, 1):
+            print(f"{i}. {user} (influência: {score})")
+    
+    def handle_fragmentation(self):
+        """Identifica e remove o vértice que causa maior fragmentação"""
+        vertice = self.remover_maior_fragmentador()
+        print(f"\nVértice que causava maior fragmentação removido: {vertice}")
+        print("O grafo foi atualizado. Você pode visualizar as mudanças selecionando a opção 7.")
+    
+    def show_natural_groups(self):
+        """Mostra os grupos naturais identificados"""
+        grupos = self.grupos_naturais()
+        print("\nGrupos naturais identificados:")
+        for i, grupo in enumerate(grupos, 1):
+            print(f"\nGrupo {i} ({len(grupo)} membros):")
+            print(", ".join(sorted(grupo)))
+    
+    def show_connection_level(self):
+        """Mostra o percentual de conexão da comunidade"""
+        percentual = self.nivel_conexao()
+        print(f"\nNível de conexão da comunidade: {percentual:.2f}%")
+    
+    def show_close_users(self):
+        """Mostra usuários próximos a um usuário específico"""
+        usuario = input("\nDigite o nome do usuário: ")
+        try:
+            proximos = self.usuarios_proximos(usuario)
+            print(f"\nUsuários mais próximos de {usuario}:")
+            for i, (user, dist) in enumerate(proximos, 1):
+                print(f"{i}. {user} (distância: {dist:.2f})")
+        except ValueError as e:
+            print(f"Erro: {e}")
+    
+    def show_close_non_interacting(self):
+        """Mostra usuários próximos que não interagem com um usuário específico"""
+        usuario = input("\nDigite o nome do usuário: ")
+        try:
+            proximos = self.usuarios_proximos_nao_interagem(usuario)
+            print(f"\nUsuários próximos que não interagem com {usuario}:")
+            for i, (user, dist) in enumerate(proximos, 1):
+                print(f"{i}. {user} (distância: {dist:.2f})")
+        except ValueError as e:
+            print(f"Erro: {e}")    
+        
+    
 
     def export_to_gephi(self, filename: str = 'social_graph.gexf'):
         """Exporta o grafo para formato Gephi (GEXF)"""
@@ -336,16 +427,127 @@ class SocialGraph:
             return
         
         self.grafo.plotar()
+        
+        
+    def usuarios_mais_influentes(self, top_n: int = 5) -> List[tuple[str, int]]:
+        """
+        Retorna os usuários mais influentes baseado no grau de saída ponderado
+        """
+        if self.grafo is None:
+            raise Exception("Grafo não construído")
+        
+        influencia = []
+        for v in self.grafo.vertices:
+            grau_saida = 0
+            if self.grafo.representacao == 'lista':
+                for (vizinho, peso) in self.grafo.estrutura.get(v, []):
+                    grau_saida += peso
+            else:
+                if not self.grafo._matriz_atualizada:
+                    self.grafo._atualizar_matriz()
+                idx = self.grafo._vertex_index[v]
+                grau_saida = sum(self.grafo.estrutura[idx])
+            
+            influencia.append((v, grau_saida))
+        
+        return sorted(influencia, key=lambda x: x[1], reverse=True)[:top_n]
+
+    def remover_maior_fragmentador(self):
+        """
+        Identifica e remove o vértice que causa maior fragmentação no grafo
+        """
+        if self.grafo is None:
+            raise Exception("Grafo não construído")
+        
+        # Implementar análise de componentes conectados antes/depois da remoção
+        # (Esta é uma implementação simplificada)
+        
+        # Encontra o vértice com maior betweenness centrality
+        G = nx.DiGraph()
+        for (u, v), weight in self.grafo.pesos_arestas.items():
+            G.add_edge(u, v, weight=weight)
+        
+        betweenness = nx.betweenness_centrality(G)
+        vertice_remover = max(betweenness, key=betweenness.get)
+        
+        print(f"Removendo vértice que causa maior fragmentação: {vertice_remover}")
+        self.grafo.remover_vertice(vertice_remover)
+        return vertice_remover
+
+    def grupos_naturais(self, n_grupos: int = 3) -> List[set[str]]:
+        """
+        Identifica grupos naturais no grafo usando detecção de comunidades
+        """
+        if self.grafo is None:
+            raise Exception("Grafo não construído")
+        
+        G = nx.Graph()  # Usamos grafo não direcionado para detecção de comunidades
+        for (u, v), weight in self.grafo.pesos_arestas.items():
+            G.add_edge(u, v, weight=weight)
+        
+        # Usando algoritmo de Louvain para detecção de comunidades
+        communities = nx.algorithms.community.louvain_communities(G)
+        return list(communities)[:n_grupos]
+
+    def nivel_conexao(self) -> float:
+        """
+        Calcula o percentual de conexão da comunidade
+        """
+        if self.grafo is None:
+            raise Exception("Grafo não construído")
+        
+        n = self.grafo.quantidade_vertices()
+        if n <= 1:
+            return 0.0
+        
+        max_edges = n * (n - 1)  # Para grafo direcionado
+        actual_edges = self.grafo.quantidade_arestas()
+        return (actual_edges / max_edges) * 100
+
+    def usuarios_proximos(self, usuario: str, n: int = 5) -> List[tuple[str, float]]:
+        """
+        Retorna os usuários mais próximos a um determinado usuário
+        """
+        if self.grafo is None:
+            raise Exception("Grafo não construído")
+        
+        G = nx.DiGraph()
+        for (u, v), weight in self.grafo.pesos_arestas.items():
+            G.add_edge(u, v, weight=weight)
+        
+        try:
+            distances = nx.single_source_dijkstra_path_length(G, usuario)
+            distances.pop(usuario)  # Remove o próprio usuário
+            return sorted(distances.items(), key=lambda x: x[1])[:n]
+        except nx.NodeNotFound:
+            raise ValueError(f"Usuário {usuario} não encontrado no grafo")
+
+    def usuarios_proximos_nao_interagem(self, usuario: str, n: int = 5) -> List[tuple[str, float]]:
+        """
+        Retorna usuários próximos que não têm interação direta
+        """
+        proximos = self.usuarios_proximos(usuario, n*2)  # Pegamos mais para filtrar
+        
+        # Filtra os que não têm aresta direta
+        resultado = []
+        for user, dist in proximos:
+            if not self.grafo.sao_adjacentes_vertices(usuario, user):
+                resultado.append((user, dist))
+                if len(resultado) >= n:
+                    break
+                    
+        return resultado
+    
 
 if __name__ == "__main__":
     try:
         load_dotenv()
         social_graph = SocialGraph()
+        print("Construindo grafo social...")
         social_graph.build_graph()
         
         if social_graph.grafo and social_graph.grafo.quantidade_vertices() > 0:
-            social_graph.export_to_csv()
-            social_graph.plot_graph()
+            social_graph.run_analysis_menu()
         else:
             print("Nenhum dado foi coletado. Verifique:")
             print("1. Se o token GITHUB_KEY no arquivo .env é válido")
