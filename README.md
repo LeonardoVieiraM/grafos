@@ -2,23 +2,13 @@
 
 Este repositório contém duas classes principais para manipulação e análise de grafos em Python: `Grafo` (um grafo genérico) e `SocialGraph` (especializado para redes sociais).
 
-## Índice
-
-1. [Classe Grafo](#classe-grafo)
-   - [Funcionalidades](#funcionalidades-grafo)
-   - [Métodos Principais](#métodos-principais-grafo)
-
-2. [Classe SocialGraph](#classe-socialgraph)
-   - [Funcionalidades](#funcionalidades-socialgraph)
-   - [Métodos Principais](#métodos-principais-socialgraph)
-
 ---
 
-## Classe Grafo
+## Classe Grafo.py
 
 A classe `Grafo` implementa uma estrutura de dados para grafos com suporte a múltiplas representações e operações básicas.
 
-### Funcionalidades Grafo
+### Funcionalidades Grafo.py
 
 - **Representações suportadas**:
   - Lista de adjacência (padrão)
@@ -38,7 +28,7 @@ A classe `Grafo` implementa uma estrutura de dados para grafos com suporte a mú
 - **Persistência**:
   - Importação/exportação de/para arquivos CSV
 
-### Métodos Principais Grafo
+### Métodos Principais Grafo.py
 
 | Método | Descrição |
 |--------|-----------|
@@ -61,71 +51,89 @@ A classe `Grafo` implementa uma estrutura de dados para grafos com suporte a mú
 
 ---
 
-## Classe SocialGraph
+# Classe SocialGraph.py
 
-A classe `SocialGraph` estende a funcionalidade básica do `Grafo` para aplicações específicas em redes sociais, com foco em análise de interações em repositórios GitHub.
+A classe `SocialGraph` é uma implementação especializada para análise de redes sociais em repositórios GitHub, construída sobre a classe `Grafo` básica. Ela coleta dados de interações através da API do GitHub e fornece métodos avançados para análise de redes sociais.
 
-### Funcionalidades SocialGraph
+## Funcionalidades SocialGraph.py
+- **Coleta de Dados**:
+  - Integração direta com a API GraphQL do GitHub
+  - Coleta automática de interações em issues e pull requests
+  - Paginação de resultados para coletar dados completos
 
-- **Coleta de dados**:
-  - Integração com API do GitHub via GraphQL
-  - Coleta de interações em issues e pull requests
-  - Paginação automática de resultados
-
-- **Métricas de rede social**:
+- **Análise de Rede**:
   - Identificação de usuários influentes
   - Detecção de fragmentação na rede
   - Análise de comunidades/grupos naturais
-  - Cálculo de níveis de conexão
+  - Cálculo de métricas de conexão
+  - Busca por relações próximas
 
-- **Visualização e exportação**:
-  - Plotagem do grafo social
-  - Exportação para Gephi (formato GEXF)
-  - Exportação para CSV
+- **Visualização e Exportação**:
+  - Plotagem gráfica do grafo social
+  - Exportação para formatos CSV e GEXF (Gephi)
+  - Menu interativo para análise
 
-- **Interface interativa**:
-  - Menu de análise com múltiplas opções
 
-### Métodos Principais SocialGraph
+## Métodos Principais SocialGraph.py
+
+### Construção do Grafo
 
 | Método | Descrição |
 |--------|-----------|
 | `__init__(representation='matriz')` | Inicializa com credenciais do GitHub |
 | `build_graph(min_interactions=50)` | Constrói o grafo a partir dos dados do GitHub |
-| `run_analysis_menu()` | Menu interativo para análise do grafo |
+
+### Análise de Rede
+
+| Método | Descrição |
+|--------|-----------|
 | `usuarios_mais_influentes(top_n=5)` | Retorna os usuários mais influentes |
 | `remover_maior_fragmentador()` | Remove o vértice que mais fragmenta o grafo |
 | `grupos_naturais(n_grupos=3)` | Identifica comunidades no grafo |
 | `nivel_conexao()` | Calcula o percentual de conexão da rede |
 | `usuarios_proximos(usuario, n=5)` | Encontra usuários próximos a um dado usuário |
-| `export_to_gephi(filename)` | Exporta para formato Gephi (GEXF) |
-| `export_to_csv(filename)` | Exporta para arquivo CSV |
+| `usuarios_proximos_nao_interagem(usuario, n=5)` | Encontra conexões ausentes |
+
+### Visualização e Exportação
+
+| Método | Descrição |
+|--------|-----------|
 | `plot_graph()` | Visualiza o grafo social |
+| `export_to_csv(filename)` | Exporta para arquivo CSV |
+| `export_to_gephi(filename)` | Exporta para formato Gephi (GEXF) |
 
+### Interface Interativa
 
-### Requisitos
+| Método | Descrição |
+|--------|-----------|
+| `run_analysis_menu()` | Menu interativo para análise do grafo |
+
+## Requisitos
 
 - Python 3.8+
 - Pacotes necessários:
-  ```
+  ```bash
   python-dotenv
   requests
   matplotlib
   ```
 
-### Configuração
+## Configuração
 
 1. Crie um arquivo `.env` na raiz do projeto com:
    ```
    GITHUB_KEY=seu_token_github
    REPOSITORIO=owner/nome_repositorio
    ```
-2. O token GitHub precisa ter permissões para ler repositórios públicos (ou privados, se for o caso)
+2. O token GitHub precisa ter permissões para ler repositórios
 
-### Análises Disponíveis no Menu
+## Análises Disponíveis
 
-1. **Usuários mais influentes**: Identifica os membros com maior impacto na rede
-2. **Fragmentação**: Detecta e remove nós que causam maior divisão na rede
-3. **Grupos naturais**: Revela comunidades que se formam organicamente
-4. **Nível de conexão**: Mede quão conectada está a comunidade
-5. **Usuários próximos**: Encontra relações indiretas entre membros
+1. **Influência**: Identifica membros com maior impacto na rede
+2. **Fragmentação**: Detecta nós que dividem a rede
+3. **Comunidades**: Revela grupos naturais de interação
+4. **Conexão**: Mede o grau de conectividade da rede
+5. **Proximidade**: Aponta usuários próximos no grafo, com ou sem conexões entre si
+
+
+
