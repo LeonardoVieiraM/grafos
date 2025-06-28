@@ -5,8 +5,9 @@ import json
 import time
 from typing import Dict, List, Optional, Set, Tuple
 from grafo import Grafo
-import networkx as nx
 import matplotlib.pyplot as plt
+import math
+from collections import defaultdict, deque
 
 load_dotenv()
 
@@ -349,65 +350,16 @@ class SocialGraph:
             for i, (user, dist) in enumerate(proximos, 1):
                 print(f"{i}. {user} (distância: {dist:.2f})")
         except ValueError as e:
-            print(f"Erro: {e}")    
-        
-    
+            print(f"Erro: {e}")
 
     def export_to_gephi(self, filename: str = 'social_graph.gexf'):
         """Exporta o grafo para formato Gephi (GEXF)"""
         if self.grafo is None:
             raise Exception("Grafo não construído. Execute build_graph() primeiro.")
         
-        try:
-            G = nx.DiGraph()
-            
-            # Add nodes with attributes
-            for v in self.grafo.vertices:
-                G.add_node(v, 
-                          weight=self.grafo.pesos_vertices.get(v, 1),
-                          label=self.grafo.rotulos_vertices.get(v, v))
-            
-            # Add edges with weights
-            if self.representation == 'lista':
-                for u in self.grafo.estrutura:
-                    for (v, weight) in self.grafo.estrutura[u]:
-                        G.add_edge(u, v, weight=weight)
-            else:  # matriz
-                vertex_index = {v: i for i, v in enumerate(sorted(self.grafo.vertices))}
-                for i, u in enumerate(sorted(self.grafo.vertices)):
-                    for j, v in enumerate(sorted(self.grafo.vertices)):
-                        weight = self.grafo.estrutura[i][j]
-                        if weight > 0:
-                            G.add_edge(u, v, weight=weight)
-            
-            # Write GEXF file
-            nx.write_gexf(G, filename)
-            print(f"Grafo exportado para Gephi: {filename}")
-            return True
-        except Exception as e:
-            print(f"Erro ao exportar para Gephi: {str(e)}")
-            return False
-          
-    def export_to_gephi(self, filename: str = 'social_graph.gexf'):
-        """Exporta o grafo para formato Gephi (GEXF)"""
-        if self.grafo is None:
-            raise Exception("Grafo não construído. Execute build_graph() primeiro.")
-        
-        G = nx.DiGraph()
-        
-        # Add nodes with attributes
-        for v in self.grafo.vertices:
-            G.add_node(v, 
-                      weight=self.grafo.pesos_vertices.get(v, 1),
-                      label=self.grafo.rotulos_vertices.get(v, v))
-        
-        # Add edges with weights
-        for (u, v), weight in self.grafo.pesos_arestas.items():
-            G.add_edge(u, v, weight=weight)
-        
-        # Write GEXF file
-        nx.write_gexf(G, filename)
-        print(f"Grafo exportado para Gephi: {filename}")
+        # Implementação alternativa sem NetworkX
+        print("Exportação para GEXF requer NetworkX. Use export_to_csv() como alternativa.")
+        return False
     
     def export_to_csv(self, filename: str = 'social_graph.csv'):
         """Exporta o grafo social para CSV"""
@@ -427,8 +379,7 @@ class SocialGraph:
             return
         
         self.grafo.plotar()
-        
-        
+    
     def usuarios_mais_influentes(self, top_n: int = 5) -> List[tuple[str, int]]:
         """
         Retorna os usuários mais influentes baseado no grau de saída ponderado
@@ -459,35 +410,116 @@ class SocialGraph:
         if self.grafo is None:
             raise Exception("Grafo não construído")
         
-        # Implementar análise de componentes conectados antes/depois da remoção
-        # (Esta é uma implementação simplificada)
-        
-        # Encontra o vértice com maior betweenness centrality
-        G = nx.DiGraph()
-        for (u, v), weight in self.grafo.pesos_arestas.items():
-            G.add_edge(u, v, weight=weight)
-        
-        betweenness = nx.betweenness_centrality(G)
+        # Implementação alternativa de betweenness centrality
+        betweenness = self._calcular_betweenness()
         vertice_remover = max(betweenness, key=betweenness.get)
         
         print(f"Removendo vértice que causa maior fragmentação: {vertice_remover}")
         self.grafo.remover_vertice(vertice_remover)
         return vertice_remover
+    
+    def _calcular_betweenness(self) -> Dict[str, float]:
+        """Calcula betweenness centrality sem NetworkX"""
+        betweenness = {v: 0.0 for v in self.grafo.vertices}
+        
+        for s in self.grafo.vertices:
+            # Estruturas para o algoritmo
+            S = []
+            P = {v: [] for v in self.grafo.vertices}
+            sigma = {v: 0 for v in self.grafo.vertices}
+            sigma[s] = 1
+            d = {v: -1 for v in self.grafo.vertices}
+            d[s] = 0
+            Q = deque()
+            Q.append(s)
+            
+            while Q:
+                v = Q.popleft()
+                S.append(v)
+                for w in self._obter_vizinhos_direcionados(v):
+                    if d[w] < 0:
+                        Q.append(w)
+                        d[w] = d[v] + 1
+                    if d[w] == d[v] + 1:
+                        sigma[w] += sigma[v]
+                        P[w].append(v)
+            
+            delta = {v: 0 for v in self.grafo.vertices}
+            while S:
+                w = S.pop()
+                for v in P[w]:
+                    delta[v] += (sigma[v] / sigma[w]) * (1 + delta[w])
+                if w != s:
+                    betweenness[w] += delta[w]
+        
+        # Normalização para grafos direcionados
+        n = len(self.grafo.vertices)
+        if n > 2:
+            for v in betweenness:
+                betweenness[v] /= (n - 1) * (n - 2)
+        
+        return betweenness
+    
+    def _obter_vizinhos_direcionados(self, v: str) -> List[str]:
+        """Obtém vizinhos direcionados (apenas arestas de saída)"""
+        if self.grafo.representacao == 'lista':
+            return [vizinho for vizinho, _ in self.grafo.estrutura.get(v, [])]
+        else:
+            if not self.grafo._matriz_atualizada:
+                self.grafo._atualizar_matriz()
+            idx = self.grafo._vertex_index[v]
+            return [vertice for vertice, i in self.grafo._vertex_index.items() 
+                   if self.grafo.estrutura[idx][i] > 0]
 
     def grupos_naturais(self, n_grupos: int = 3) -> List[set[str]]:
         """
-        Identifica grupos naturais no grafo usando detecção de comunidades
+        Identifica grupos naturais no grafo usando detecção de comunidades (Louvain alternativo)
         """
         if self.grafo is None:
             raise Exception("Grafo não construído")
         
-        G = nx.Graph()  # Usamos grafo não direcionado para detecção de comunidades
-        for (u, v), weight in self.grafo.pesos_arestas.items():
-            G.add_edge(u, v, weight=weight)
+        # Implementação simplificada de detecção de comunidades
+        # Esta é uma versão simplificada - algoritmos reais são mais complexos
         
-        # Usando algoritmo de Louvain para detecção de comunidades
-        communities = nx.algorithms.community.louvain_communities(G)
-        return list(communities)[:n_grupos]
+        # Converte para grafo não direcionado (soma pesos em ambas direções)
+        grafo_nao_dir = defaultdict(dict)
+        for (u, v), peso in self.grafo.pesos_arestas.items():
+            grafo_nao_dir[u][v] = grafo_nao_dir[u].get(v, 0) + peso
+            grafo_nao_dir[v][u] = grafo_nao_dir[v].get(u, 0) + peso
+        
+        # Algoritmo simplificado de detecção de comunidades
+        comunidades = {v: i for i, v in enumerate(self.grafo.vertices)}
+        mudou = True
+        
+        while mudou:
+            mudou = False
+            for v in self.grafo.vertices:
+                melhor_comunidade = self._encontrar_melhor_comunidade(v, grafo_nao_dir, comunidades)
+                if melhor_comunidade != comunidades[v]:
+                    comunidades[v] = melhor_comunidade
+                    mudou = True
+        
+        # Agrupa por comunidade
+        grupos = defaultdict(set)
+        for v, com in comunidades.items():
+            grupos[com].add(v)
+        
+        # Retorna os maiores grupos
+        return sorted(grupos.values(), key=len, reverse=True)[:n_grupos]
+    
+    def _encontrar_melhor_comunidade(self, v, grafo, comunidades):
+        """Auxiliar para encontrar a melhor comunidade para um vértice"""
+        vizinhos = grafo.get(v, {})
+        comunidades_vizinhos = defaultdict(int)
+        
+        for vizinho, peso in vizinhos.items():
+            com = comunidades[vizinho]
+            comunidades_vizinhos[com] += peso
+        
+        if not comunidades_vizinhos:
+            return comunidades[v]
+        
+        return max(comunidades_vizinhos.items(), key=lambda x: x[1])[0]
 
     def nivel_conexao(self) -> float:
         """
@@ -506,21 +538,53 @@ class SocialGraph:
 
     def usuarios_proximos(self, usuario: str, n: int = 5) -> List[tuple[str, float]]:
         """
-        Retorna os usuários mais próximos a um determinado usuário
+        Retorna os usuários mais próximos a um determinado usuário usando Dijkstra
         """
         if self.grafo is None:
             raise Exception("Grafo não construído")
-        
-        G = nx.DiGraph()
-        for (u, v), weight in self.grafo.pesos_arestas.items():
-            G.add_edge(u, v, weight=weight)
-        
-        try:
-            distances = nx.single_source_dijkstra_path_length(G, usuario)
-            distances.pop(usuario)  # Remove o próprio usuário
-            return sorted(distances.items(), key=lambda x: x[1])[:n]
-        except nx.NodeNotFound:
+        if usuario not in self.grafo.vertices:
             raise ValueError(f"Usuário {usuario} não encontrado no grafo")
+        
+        distancias = {v: float('inf') for v in self.grafo.vertices}
+        distancias[usuario] = 0
+        visitados = set()
+        
+        while len(visitados) < len(self.grafo.vertices):
+            # Encontra o vértice não visitado com menor distância
+            corrente = None
+            menor_dist = float('inf')
+            for v in self.grafo.vertices:
+                if v not in visitados and distancias[v] < menor_dist:
+                    menor_dist = distancias[v]
+                    corrente = v
+            
+            if corrente is None:
+                break
+            
+            visitados.add(corrente)
+            
+            # Atualiza distâncias dos vizinhos
+            for vizinho, peso in self._obter_vizinhos_pesos(corrente):
+                if distancias[vizinho] > distancias[corrente] + (1 / peso if peso > 0 else float('inf')):
+                    distancias[vizinho] = distancias[corrente] + (1 / peso if peso > 0 else float('inf'))
+        
+        # Remove o próprio usuário e infinitos
+        distancias.pop(usuario)
+        distancias = {k: v for k, v in distancias.items() if v != float('inf')}
+        
+        return sorted(distancias.items(), key=lambda x: x[1])[:n]
+    
+    def _obter_vizinhos_pesos(self, v: str) -> List[tuple[str, float]]:
+        """Obtém vizinhos e pesos das arestas de saída"""
+        if self.grafo.representacao == 'lista':
+            return self.grafo.estrutura.get(v, [])
+        else:
+            if not self.grafo._matriz_atualizada:
+                self.grafo._atualizar_matriz()
+            idx = self.grafo._vertex_index[v]
+            return [(vertice, self.grafo.estrutura[idx][i]) 
+                   for vertice, i in self.grafo._vertex_index.items() 
+                   if self.grafo.estrutura[idx][i] > 0]
 
     def usuarios_proximos_nao_interagem(self, usuario: str, n: int = 5) -> List[tuple[str, float]]:
         """
@@ -537,7 +601,6 @@ class SocialGraph:
                     break
                     
         return resultado
-    
 
 if __name__ == "__main__":
     try:
