@@ -72,7 +72,7 @@ A classe `SocialGraph` é uma implementação especializada para análise de red
 
 - **Visualização e Exportação**:
   - Plotagem gráfica do grafo social
-  - Exportação para formatos CSV e GEXF (Gephi)
+  - Exportação para formato CSV
   - Menu interativo para análise
 
 
