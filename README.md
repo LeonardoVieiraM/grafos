@@ -1,6 +1,7 @@
 # Grafo e SocialGraph - Documentação Completa
 
 Este repositório contém duas classes principais para manipulação e análise de grafos em Python: `Grafo` (um grafo genérico) e `SocialGraph` (especializado para redes sociais).
+
 Este repositório também possui o vídeo de apresentação da aplicação, respondendo as perguntas obrigatórias do projeto.
 
 ---
