@@ -102,7 +102,6 @@ A classe `SocialGraph` é uma implementação especializada para análise de red
 |--------|-----------|
 | `plot_graph()` | Visualiza o grafo social |
 | `export_to_csv(filename)` | Exporta para arquivo CSV |
-| `export_to_gephi(filename)` | Exporta para formato Gephi (GEXF) |
 
 ### Interface Interativa
 
